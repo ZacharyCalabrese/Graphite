@@ -1,0 +1,37 @@
+@using DatasetBuilder.Web.Models
+@using MudBlazor
+<MudPaper Class="pa-2">
+    <MudText Typo="Typo.h6">Schema Explorer</MudText>
+    @foreach (var table in Schema)
+    {
+        <MudExpansionPanel Text="@table.Key">
+            @foreach (var column in table.Value)
+            {
+                <MudCheckBox T="bool" Label="@column" Value="@IsIncluded(table.Key, column)" ValueChanged="@(v => ToggleColumn(table.Key, column, v))"/>
+            }
+        </MudExpansionPanel>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public Dictionary<string, IReadOnlyCollection<string>> Schema { get; set; } = [];
+    [Parameter, EditorRequired] public DatasetBuilderState State { get; set; } = new();
+
+    private bool IsIncluded(string table, string column) => State.SelectedColumns.Any(c => c.TableName == table && c.ColumnName == column && c.Included);
+
+    private void ToggleColumn(string table, string column, bool include)
+    {
+        var existing = State.SelectedColumns.FirstOrDefault(c => c.TableName == table && c.ColumnName == column);
+        if (existing is null)
+        {
+            State.SelectedColumns.Add(new SelectedColumnVm(table, column, include));
+        }
+        else
+        {
+            State.SelectedColumns.Remove(existing);
+            State.SelectedColumns.Add(existing with { Included = include });
+        }
+
+        State.SourceTable = table;
+    }
+}

@@ -1,0 +1,21 @@
+@page "/"
+@using DatasetBuilder.Web.Models
+@using DatasetBuilder.Web.Services
+@inject DatasetApiClient ApiClient
+
+<MudGrid>
+    <MudItem xs="3"><SchemaExplorer Schema="Schema" State="State"/></MudItem>
+    <MudItem xs="9">
+        <MudStack Spacing="2">
+            <FilterBuilder State="State"/>
+            <PublishCard State="State"/>
+            <LiveDataPreview DatasetId="State.PublishedId"/>
+        </MudStack>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private DatasetBuilderState State { get; set; } = new();
+    private Dictionary<string, IReadOnlyCollection<string>> Schema { get; set; } = [];
+    protected override async Task OnInitializedAsync() => Schema = await ApiClient.GetSchemaAsync();
+}
