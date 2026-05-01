@@ -6,12 +6,40 @@
     <MudText Typo="Typo.h6">Publish Dataset</MudText>
     <MudTextField @bind-Value="State.Name" Label="Name"/>
     <MudTextField @bind-Value="State.Description" Label="Description"/>
-    <MudButton OnClick="Publish">Publish</MudButton>
+    <MudButton OnClick="Publish" Disabled="@(!CanPublish || IsPublishing)" Variant="Variant.Filled" Color="Color.Primary">
+        @(IsPublishing ? "Publishing..." : "Publish")
+    </MudButton>
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@ErrorMessage</MudAlert>
+    }
     <MudTextField Label="Consumer API URL" Value="@ApiUrl" ReadOnly="true"/>
 </MudPaper>
 
 @code {
     [Parameter, EditorRequired] public DatasetBuilderState State { get; set; } = new();
+    private bool IsPublishing { get; set; }
+    private string ErrorMessage { get; set; } = string.Empty;
+    private bool CanPublish => !string.IsNullOrWhiteSpace(State.Name)
+        && !string.IsNullOrWhiteSpace(State.SourceTable)
+        && State.SelectedColumns.Any(c => c.Included);
+
     private string ApiUrl => State.PublishedId is null ? string.Empty : $"/api/datasets/{State.PublishedId}/data";
-    private async Task Publish() => State.PublishedId = await ApiClient.PublishAsync(State);
+    private async Task Publish()
+    {
+        ErrorMessage = string.Empty;
+        IsPublishing = true;
+        try
+        {
+            State.PublishedId = await ApiClient.PublishAsync(State);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Publish failed: {ex.Message}";
+        }
+        finally
+        {
+            IsPublishing = false;
+        }
+    }
 }

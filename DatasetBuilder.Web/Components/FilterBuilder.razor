@@ -2,25 +2,47 @@
 <MudPaper Class="pa-2">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
         <MudText Typo="Typo.h6">Filters</MudText>
-        <MudButton Variant="Variant.Filled" OnClick="AddFilter">Add Filter</MudButton>
+        <MudButton Variant="Variant.Filled" OnClick="AddFilter" Disabled="@(!AvailableColumns.Any())">Add Filter</MudButton>
     </MudStack>
+
+    @if (!AvailableColumns.Any())
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+            Select at least one column in Schema Explorer before adding filters.
+        </MudAlert>
+    }
 
     @foreach (var rule in State.FilterRules)
     {
-        <MudGrid>
-            <MudItem xs="4"><MudTextField Value="@rule.ColumnName" ValueChanged="@(v => Update(rule, rule with { ColumnName = v }))" Label="Column" /></MudItem>
-            <MudItem xs="3"><MudSelect T="string" Value="@rule.Operator" ValueChanged="@(v => Update(rule, rule with { Operator = v }))"><MudSelectItem Value="=">=</MudSelectItem><MudSelectItem Value=">">&gt;</MudSelectItem><MudSelectItem Value="<">&lt;</MudSelectItem><MudSelectItem Value="LIKE">LIKE</MudSelectItem></MudSelect></MudItem>
+        <MudGrid Class="mt-2">
+            <MudItem xs="4">
+                <MudSelect T="string" Value="@rule.ColumnName" ValueChanged="@(v => Update(rule, rule with { ColumnName = v ?? string.Empty }))" Label="Column">
+                    @foreach (var column in AvailableColumns)
+                    {
+                        <MudSelectItem Value="@column">@column</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="3"><MudSelect T="string" Value="@rule.Operator" ValueChanged="@(v => Update(rule, rule with { Operator = v ?? "=" }))"><MudSelectItem Value="=">=</MudSelectItem><MudSelectItem Value=">">&gt;</MudSelectItem><MudSelectItem Value="<">&lt;</MudSelectItem><MudSelectItem Value="LIKE">LIKE</MudSelectItem></MudSelect></MudItem>
             <MudItem xs="4"><MudTextField Value="@rule.Value" ValueChanged="@(v => Update(rule, rule with { Value = v }))" Label="Value" /></MudItem>
+            <MudItem xs="1">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveFilter(rule))" />
+            </MudItem>
         </MudGrid>
     }
 </MudPaper>
 
 @code {
     [Parameter, EditorRequired] public DatasetBuilderState State { get; set; } = new();
-    private void AddFilter() => State.FilterRules.Add(new FilterRuleVm(string.Empty, "=", string.Empty));
+    private IReadOnlyCollection<string> AvailableColumns =>
+        State.SelectedColumns.Where(c => c.Included).Select(c => c.ColumnName).Distinct().OrderBy(c => c).ToArray();
+
+    private void AddFilter() => State.FilterRules.Add(new FilterRuleVm(AvailableColumns.FirstOrDefault() ?? string.Empty, "=", string.Empty));
     private void Update(FilterRuleVm oldRule, FilterRuleVm newRule)
     {
-        State.FilterRules.Remove(oldRule);
-        State.FilterRules.Add(newRule);
+        var index = State.FilterRules.IndexOf(oldRule);
+        if (index < 0) return;
+        State.FilterRules[index] = newRule;
     }
+    private void RemoveFilter(FilterRuleVm rule) => State.FilterRules.Remove(rule);
 }
