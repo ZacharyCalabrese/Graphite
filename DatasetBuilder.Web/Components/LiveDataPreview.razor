@@ -1,0 +1,27 @@
+@using DatasetBuilder.Web.Models
+@using DatasetBuilder.Web.Services
+@inject DatasetApiClient ApiClient
+<MudPaper Class="pa-2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.h6">Live Preview</MudText>
+        <MudButton OnClick="LoadPreview">Refresh</MudButton>
+    </MudStack>
+    <MudTable Items="Rows">
+        <HeaderContent>
+            @if (Rows.Any()) { foreach (var key in Rows.First().Keys) { <MudTh>@key</MudTh> } }
+        </HeaderContent>
+        <RowTemplate>
+            @foreach (var cell in context.Values) { <MudTd>@cell</MudTd> }
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid? DatasetId { get; set; }
+    private IReadOnlyCollection<Dictionary<string, object>> Rows { get; set; } = [];
+    private async Task LoadPreview()
+    {
+        if (DatasetId is null) return;
+        Rows = await ApiClient.PreviewAsync(DatasetId.Value);
+    }
+}
