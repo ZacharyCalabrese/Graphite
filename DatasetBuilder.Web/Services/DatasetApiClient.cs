@@ -5,6 +5,8 @@ namespace DatasetBuilder.Web.Services;
 
 public class DatasetApiClient(HttpClient http)
 {
+    public sealed class PublishValidationException(string message) : Exception(message);
+
     public async Task<Dictionary<string, IReadOnlyCollection<string>>> GetSchemaAsync() =>
         await http.GetFromJsonAsync<Dictionary<string, IReadOnlyCollection<string>>>("api/datasets/schema") ?? [];
 
@@ -23,8 +25,21 @@ public class DatasetApiClient(HttpClient http)
         };
 
         var response = await http.PostAsJsonAsync("api/datasets", payload);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadFromJsonAsync<ValidationErrorResponse>();
+            if (error?.Errors is not null && error.Errors.Count > 0)
+            {
+                var joinedErrors = string.Join(" ", error.Errors.SelectMany(kv => kv.Value).Distinct());
+                throw new PublishValidationException(joinedErrors);
+            }
+
+            response.EnsureSuccessStatusCode();
+        }
+
         var created = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
         return Guid.Parse(created!["id"].ToString()!);
     }
+
+    private sealed record ValidationErrorResponse(Dictionary<string, string[]> Errors);
 }

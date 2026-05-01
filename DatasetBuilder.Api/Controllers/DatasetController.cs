@@ -12,9 +12,18 @@ public class DatasetController(
     IDynamicDatasetQueryService dynamicDatasetQueryService,
     IDatabaseSchemaService schemaService) : ControllerBase
 {
+    private static readonly HashSet<string> SupportedOperators = ["=", ">", "<", "LIKE", ">=", "<=", "<>"];
+
     [HttpPost]
     public async Task<ActionResult<DatasetDefinition>> Create([FromBody] DatasetDefinitionCreateRequest request, CancellationToken cancellationToken)
     {
+        var schema = await schemaService.GetSchemaAsync(cancellationToken);
+        var validationErrors = ValidateCreateRequest(request, schema);
+        if (validationErrors.Count > 0)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationErrors));
+        }
+
         var dataset = new DatasetDefinition
         {
             Name = request.Name,
@@ -48,5 +57,84 @@ public class DatasetController(
 
         var result = await dynamicDatasetQueryService.ExecuteAsync(definition, runtimeFilters, page, pageSize, cancellationToken);
         return Ok(result);
+    }
+
+    private static Dictionary<string, string[]> ValidateCreateRequest(
+        DatasetDefinitionCreateRequest request,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> schema)
+    {
+        var errors = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        void AddError(string key, string message)
+        {
+            if (!errors.TryGetValue(key, out var existing))
+            {
+                existing = [];
+                errors[key] = existing;
+            }
+
+            existing.Add(message);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            AddError(nameof(request.Name), "Name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceTable))
+        {
+            AddError(nameof(request.SourceTable), "SourceTable is required.");
+            return errors.ToDictionary(kv => kv.Key, kv => kv.Value.Distinct().ToArray(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (!schema.TryGetValue(request.SourceTable, out var tableColumns))
+        {
+            AddError(nameof(request.SourceTable), $"Source table '{request.SourceTable}' was not found.");
+            return errors.ToDictionary(kv => kv.Key, kv => kv.Value.Distinct().ToArray(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (request.SelectedColumns.Count == 0)
+        {
+            AddError(nameof(request.SelectedColumns), "At least one selected column is required.");
+        }
+
+        var selectedColumnNames = request.SelectedColumns
+            .Select(c => c.ColumnName)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var selectedColumn in request.SelectedColumns)
+        {
+            if (string.IsNullOrWhiteSpace(selectedColumn.ColumnName))
+            {
+                AddError(nameof(request.SelectedColumns), "Selected columns cannot be empty.");
+                continue;
+            }
+
+            if (!tableColumns.Contains(selectedColumn.ColumnName, StringComparer.OrdinalIgnoreCase))
+            {
+                AddError(nameof(request.SelectedColumns), $"Column '{selectedColumn.ColumnName}' does not exist on table '{request.SourceTable}'.");
+            }
+        }
+
+        foreach (var filter in request.FilterRules)
+        {
+            if (string.IsNullOrWhiteSpace(filter.ColumnName))
+            {
+                AddError(nameof(request.FilterRules), "Filter column is required.");
+                continue;
+            }
+
+            if (!selectedColumnNames.Contains(filter.ColumnName))
+            {
+                AddError(nameof(request.FilterRules), $"Filter column '{filter.ColumnName}' must also be selected.");
+            }
+
+            if (!SupportedOperators.Contains(filter.Operator.ToUpperInvariant()))
+            {
+                AddError(nameof(request.FilterRules), $"Filter operator '{filter.Operator}' is not supported.");
+            }
+        }
+
+        return errors.ToDictionary(kv => kv.Key, kv => kv.Value.Distinct().ToArray(), StringComparer.OrdinalIgnoreCase);
     }
 }
